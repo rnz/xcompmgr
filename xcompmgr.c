@@ -1277,6 +1277,27 @@ unmap_win (Display *dpy, Window id, Bool fade)
 	finish_unmap_win (dpy, w);
 }
 
+static inline int
+get_opacity_prop_internal(Display *dpy, Window win, unsigned int *opacity)
+{
+    Atom actual;
+    int format;
+    unsigned long n, left;
+
+    unsigned char *data;
+    int result = XGetWindowProperty(dpy, win, opacityAtom, 0L, 1L, False,
+                       XA_CARDINAL, &actual, &format,
+                                    &n, &left, &data);
+     if (result == Success && data != NULL)
+     {
+        if (actual != None && opacity)
+            memcpy (opacity, data, sizeof (unsigned int));
+        XFree( (void *) data);
+        return 1;
+    }
+    return 0;
+}
+
 /* Get the opacity prop from window
    not found: default
    otherwise the value
@@ -1284,22 +1305,27 @@ unmap_win (Display *dpy, Window id, Bool fade)
 static unsigned int
 get_opacity_prop(Display *dpy, win *w, unsigned int def)
 {
-    Atom actual;
-    int format;
-    unsigned long n, left;
+    unsigned int opacity;
+    Window root;
+    Window parent;
+    Window *children;
+    int result;
+    int i;
+    unsigned int children_count;
 
-    unsigned char *data;
-    int result = XGetWindowProperty(dpy, w->id, opacityAtom, 0L, 1L, False,
-		       XA_CARDINAL, &actual, &format,
-				    &n, &left, &data);
-    if (result == Success && data != NULL)
-    {
-	unsigned int i;
-	memcpy (&i, data, sizeof (unsigned int));
-	XFree( (void *) data);
-	return i;
-    }
-    return def;
+    if (get_opacity_prop_internal(dpy, w->id, &opacity))
+        return opacity;
+
+    opacity = def;
+    result = XQueryTree(dpy, w->id, &root, &parent, &children, &children_count);
+    if (result && children != 0) {
+        for (i = 0; i < children_count; ++i) {
+            if (get_opacity_prop_internal(dpy, children[i], &opacity))
+                break;
+        }
+        XFree(children);
+     }
+    return opacity;
 }
 
 /* Get the opacity property from the window in a percent format
